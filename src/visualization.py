@@ -425,7 +425,7 @@ class Visualizer:
         # High confidence predictions analysis
         st.write("**High Confidence Predictions:**")
         
-        confidence_threshold = 0.8
+        confidence_threshold = 0.6
         high_conf_ads = predictions[predictions.get('advertisement_confidence', 0) > confidence_threshold]
         high_conf_irrelevant = predictions[predictions.get('irrelevant_confidence', 0) > confidence_threshold]
         high_conf_rants = predictions[predictions.get('rant_confidence', 0) > confidence_threshold]

@@ -239,36 +239,85 @@ class ModelHandler:
             }
     
     def _fallback_classification(self, prompt: str, classification_type: str) -> str:
-        """Fallback classification using rule-based approach"""
+        """Fallback classification using rule-based approach with improved confidence distribution"""
         # Extract the review text from prompt
         review_start = prompt.find('Review: "') + 9
         review_end = prompt.find('"', review_start)
         review_text = prompt[review_start:review_end].lower()
         
         if classification_type == "advertisement":
-            promo_keywords = ['visit', 'call', 'contact', 'website', 'discount', 'offer', 'deal', 'free', 'www', '.com']
-            violation_score = sum(1 for keyword in promo_keywords if keyword in review_text)
-            violation = violation_score >= 2
-            confidence = min(0.9, 0.5 + violation_score * 0.1)
-            reason = f"Found {violation_score} promotional indicators"
+            promo_keywords = ['visit', 'call', 'contact', 'website', 'discount', 'offer', 'deal', 'free', 'www', '.com', 'order now', 'click here', 'special', 'promotion', 'coupon']
+            strong_indicators = ['www.', '.com', 'visit our', 'call us', 'contact us', 'discount', 'free']
+            
+            keyword_score = sum(1 for keyword in promo_keywords if keyword in review_text)
+            strong_score = sum(1 for indicator in strong_indicators if indicator in review_text)
+            
+            # More decisive confidence scoring
+            if strong_score >= 2 or keyword_score >= 4:
+                violation = True
+                confidence = 0.85 + min(0.1, strong_score * 0.05)  # High confidence
+            elif strong_score >= 1 or keyword_score >= 2:
+                violation = True
+                confidence = 0.75 + min(0.1, keyword_score * 0.02)  # Medium-high confidence
+            elif keyword_score == 1:
+                violation = False
+                confidence = 0.25  # Low confidence, likely not ad
+            else:
+                violation = False
+                confidence = 0.15  # Very low confidence, definitely not ad
+            
+            reason = f"Promotional keywords: {keyword_score}, Strong indicators: {strong_score}"
             
         elif classification_type == "irrelevant":
-            location_keywords = ['food', 'service', 'staff', 'place', 'restaurant', 'store', 'shop', 'experience']
+            location_keywords = ['food', 'service', 'staff', 'place', 'restaurant', 'store', 'shop', 'experience', 'visit', 'went', 'ordered', 'meal', 'atmosphere', 'menu', 'price', 'quality']
+            irrelevant_keywords = ['politics', 'weather', 'my phone', 'my car', 'traffic', 'parking', 'government', 'news']
+            
             relevant_score = sum(1 for keyword in location_keywords if keyword in review_text)
-            violation = relevant_score == 0 and len(review_text) > 50
-            confidence = 0.6 if violation else 0.7
-            reason = f"Found {relevant_score} location-relevant terms"
+            irrelevant_score = sum(1 for keyword in irrelevant_keywords if keyword in review_text)
+            
+            # More decisive scoring
+            if irrelevant_score >= 2 or (relevant_score == 0 and len(review_text) > 50):
+                violation = True
+                confidence = 0.80 + min(0.15, irrelevant_score * 0.1)  # High confidence
+            elif irrelevant_score >= 1 and relevant_score <= 1:
+                violation = True
+                confidence = 0.70  # Medium-high confidence
+            elif relevant_score >= 3:
+                violation = False
+                confidence = 0.20  # Low confidence, clearly relevant
+            else:
+                violation = False
+                confidence = 0.35  # Medium-low confidence
+            
+            reason = f"Location terms: {relevant_score}, Irrelevant terms: {irrelevant_score}"
             
         elif classification_type == "rant":
-            visit_indicators = ['went', 'visited', 'came', 'ordered', 'ate', 'tried', 'saw', 'met']
-            indirect_indicators = ['heard', 'told', 'people say', 'apparently', 'never been']
+            visit_indicators = ['went', 'visited', 'came', 'ordered', 'ate', 'tried', 'saw', 'met', 'walked in', 'sat down', 'waited', 'paid', 'left']
+            indirect_indicators = ['heard', 'told', 'people say', 'apparently', 'never been', 'supposedly', 'rumors', 'friends said']
+            rant_words = ['terrible', 'horrible', 'worst', 'awful', 'disgusting', 'never again', 'avoid', 'stay away', 'waste']
             
             visit_score = sum(1 for indicator in visit_indicators if indicator in review_text)
             indirect_score = sum(1 for indicator in indirect_indicators if indicator in review_text)
+            rant_score = sum(1 for word in rant_words if word in review_text)
             
-            violation = indirect_score > 0 and visit_score == 0
-            confidence = 0.6 + min(0.3, indirect_score * 0.1)
-            reason = f"Visit indicators: {visit_score}, Indirect indicators: {indirect_score}"
+            # More decisive rant detection
+            if indirect_score >= 2 and visit_score == 0 and rant_score >= 2:
+                violation = True
+                confidence = 0.88  # High confidence rant
+            elif indirect_score >= 1 and visit_score == 0 and rant_score >= 1:
+                violation = True
+                confidence = 0.75  # Medium-high confidence
+            elif visit_score >= 3:
+                violation = False
+                confidence = 0.15  # Low confidence, clearly visited
+            elif visit_score >= 1:
+                violation = False
+                confidence = 0.30  # Medium-low confidence
+            else:
+                violation = indirect_score > visit_score
+                confidence = 0.65 if violation else 0.40
+            
+            reason = f"Visit: {visit_score}, Indirect: {indirect_score}, Rant words: {rant_score}"
         
         else:
             violation = False
